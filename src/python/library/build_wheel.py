@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2021-2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright 2021-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -77,20 +77,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dest-dir", type=str, required=True, help="Destination directory."
     )
-    parser.add_argument(
-        "--linux",
-        action="store_true",
-        required=False,
-        help="Include linux specific artifacts.",
-    )
-    parser.add_argument(
-        "--perf-analyzer",
-        type=str,
-        required=False,
-        default=None,
-        help="perf-analyzer path.",
-    )
-
     FLAGS = parser.parse_args()
 
     FLAGS.triton_version = None
@@ -118,9 +104,8 @@ if __name__ == "__main__":
         cpdir("tritonhttpclient", os.path.join(FLAGS.whl_dir, "tritonhttpclient"))
     if os.path.isdir("tritongrpcclient"):
         cpdir("tritongrpcclient", os.path.join(FLAGS.whl_dir, "tritongrpcclient"))
-    if FLAGS.linux:
-        if os.path.isdir("tritonshmutils"):
-            cpdir("tritonshmutils", os.path.join(FLAGS.whl_dir, "tritonshmutils"))
+    if os.path.isdir("tritonshmutils"):
+        cpdir("tritonshmutils", os.path.join(FLAGS.whl_dir, "tritonshmutils"))
 
     if os.path.isdir("tritonclient/grpc"):
         cpdir("tritonclient/grpc", os.path.join(FLAGS.whl_dir, "tritonclient/grpc"))
@@ -169,50 +154,37 @@ if __name__ == "__main__":
         os.path.join(FLAGS.whl_dir, "tritonclient/utils/_shared_memory_tensor.py"),
     )
 
-    if FLAGS.linux:
+    if os.path.isdir("tritonclient/utils/shared_memory"):
         cpdir(
             "tritonclient/utils/shared_memory",
             os.path.join(FLAGS.whl_dir, "tritonclient/utils/shared_memory"),
         )
+    if os.path.isdir("tritonclient/utils/cuda_shared_memory"):
         cpdir(
             "tritonclient/utils/cuda_shared_memory",
             os.path.join(FLAGS.whl_dir, "tritonclient/utils/cuda_shared_memory"),
         )
 
-        # Copy the pre-compiled perf_analyzer binary
-        if FLAGS.perf_analyzer is not None:
-            # The permission bits need to be copied to along with the executable
-            shutil.copy(
-                FLAGS.perf_analyzer, os.path.join(FLAGS.whl_dir, "perf_analyzer")
-            )
-
-            # Create a symbolic link for backwards compatibility
-            if not os.path.exists(os.path.join(FLAGS.whl_dir, "perf_client")):
-                os.symlink("perf_analyzer", os.path.join(FLAGS.whl_dir, "perf_client"))
-
     shutil.copyfile("LICENSE.txt", os.path.join(FLAGS.whl_dir, "LICENSE.txt"))
-    shutil.copyfile("setup.py", os.path.join(FLAGS.whl_dir, "setup.py"))
+    shutil.copyfile("pyproject.toml", os.path.join(FLAGS.whl_dir, "pyproject.toml"))
+    shutil.copyfile("hatch_build.py", os.path.join(FLAGS.whl_dir, "hatch_build.py"))
     cpdir("requirements", os.path.join(FLAGS.whl_dir, "requirements"))
 
     os.chdir(FLAGS.whl_dir)
-    print("=== Building wheel")
-    if FLAGS.linux:
-        if os.uname().machine == "aarch64":
-            platform_name = "manylinux2014_aarch64"
-        elif os.uname().machine == "ppc64le":
-            platform_name = "manylinux2014_ppc64le"
-        else:
-            platform_name = "manylinux1_x86_64"
-        args = ["python3", "setup.py", "bdist_wheel", "--plat-name", platform_name]
-    else:
-        args = ["python3", "setup.py", "bdist_wheel"]
-
     wenv = os.environ.copy()
     wenv["VERSION"] = FLAGS.triton_version
-    p = subprocess.Popen(args, env=wenv)
-    p.wait()
-    fail_if(p.returncode != 0, "setup.py failed")
 
+    print("=== Building wheel")
+    # PEP 517 build (python -m build) so the pinned hatchling version in
+    # pyproject.toml's [build-system] is installed into an isolated env and
+    # used deterministically, instead of whatever build backend happens to
+    # be preinstalled in the build image. See TRI-1775.
+    p = subprocess.Popen(
+        ["python3", "-m", "build", "--wheel"],
+        env=wenv,
+    )
+    p.wait()
+    fail_if(p.returncode != 0, "Building wheel failed")
     cpdir("dist", FLAGS.dest_dir)
 
     print("=== Output wheel file is in: {}".format(FLAGS.dest_dir))
