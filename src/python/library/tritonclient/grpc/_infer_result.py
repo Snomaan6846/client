@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright 2023, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -77,10 +77,6 @@ class InferResult:
                         np_array = deserialize_bytes_tensor(
                             self._result.raw_output_contents[index]
                         )
-                    elif datatype == "BF16":
-                        np_array = deserialize_bf16_tensor(
-                            self._result.raw_output_contents[index]
-                        )
                     else:
                         np_array = np.frombuffer(
                             self._result.raw_output_contents[index],
@@ -89,7 +85,7 @@ class InferResult:
                 elif len(output.contents.bytes_contents) != 0:
                     np_array = np.array(output.contents.bytes_contents, copy=False)
                 else:
-                    np_array = np.empty(0)
+                    np_array = np.empty(0, dtype=triton_to_np_dtype(datatype))
                 np_array = np_array.reshape(shape)
                 return np_array
             else:
